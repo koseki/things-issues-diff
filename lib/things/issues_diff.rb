@@ -1,4 +1,5 @@
-require "things/issues_diff/version"
+# frozen_string_literal: true
+require 'things/issues_diff/version'
 
 require 'optparse'
 require 'octokit'
@@ -21,25 +22,22 @@ class Things::IssuesDiff
     end
     opts.parse!(argv)
 
-    commands = []
-    unless argv[0].nil?
-      commands = argv.shift.split(/\s*,\s*/)
-    end
-    @commands = %w{help sampleconf fetch diff}.& commands
+    commands = argv[0].nil? ? [] : argv.shift.split(/\s*,\s*/)
+    @commands = %w[help sampleconf fetch diff].& commands
   end
 
   def load_config
     default_config_file = File.join(ENV['HOME'], '.things-diff/config.yml')
     @config_file = @args[:config_file] || default_config_file
-    unless File.exists?(@config_file)
+    unless File.exist?(@config_file)
       puts "Error: Config file not found: #{@config_file}"
 
-      unless File.exists?(default_config_file)
+      unless File.exist?(default_config_file)
         puts
-        puts "Please create config.yml and edit."
-        puts "  $ mkdir ~/.things-diff/"
-        puts "  $ things-diff sampleconf > ~/.things-diff/config.yml"
-        puts "  $ vi ~/.things-diff/config.yml"
+        puts 'Please create config.yml and edit.'
+        puts '  $ mkdir ~/.things-diff/'
+        puts '  $ things-diff sampleconf > ~/.things-diff/config.yml'
+        puts '  $ vi ~/.things-diff/config.yml'
       end
       exit 1
     end
@@ -50,14 +48,14 @@ class Things::IssuesDiff
       @data_file = File.join(File.dirname(@config_file), @config['data_file'])
       @data_file = File.absolute_path(@data_file)
     else
-      puts "Error: Please set the data_file"
+      puts 'Error: Please set the data_file'
       exit 1
     end
   end
 
   # https://octokit.github.io/octokit.rb/
   def init_octokit
-    @client = Octokit::Client.new(:access_token => @config['token'])
+    @client = Octokit::Client.new(access_token: @config['token'])
     @client.auto_paginate = true
   end
 
@@ -97,7 +95,7 @@ class Things::IssuesDiff
       issues.each do |issue|
         labels = []
         if issue[:labels]
-          labels = issue[:labels].map {|lbl| lbl[:name]}
+          labels = issue[:labels].map { |lbl| lbl[:name] }
         end
 
         milestone = issue[:milestone] ? issue[:milestone][:title] : ''
@@ -129,17 +127,17 @@ class Things::IssuesDiff
         includes = project.dig('milestones', 'include') || []
 
         unless includes.empty?
-          issues = issues.select {|k,v|  includes.include?(v['milestone']) }
+          issues = issues.select { |_, v| includes.include?(v['milestone']) }
         end
         unless excludes.empty?
-          issues = issues.select {|k,v| !excludes.include?(v['milestone']) }
+          issues = issues.reject { |_, v| excludes.include?(v['milestone']) }
         end
       end
 
-      new_issues = (issues.keys - tasks.keys).map {|number| issues[number]}
-      old_tasks = (tasks.keys - issues.keys).map {|number| tasks[number]}
+      new_issues = (issues.keys - tasks.keys).map { |number| issues[number] }
+      old_tasks = (tasks.keys - issues.keys).map { |number| tasks[number] }
 
-      if new_issues.empty? and old_tasks.empty?
+      if new_issues.empty? && old_tasks.empty?
         puts "--- #{project['name']}: Clear! ---"
         next
       end
@@ -164,21 +162,22 @@ class Things::IssuesDiff
   end
 
   def load_tasks
-    tasks = %x{things.sh all}.split(/\r?\n/)
-    project_names = @config['projects'].map {|prj| prj['name'] }
-    result = project_names.map {|name| [name, {}]}.to_h
+    tasks = `things.sh all`.split(/\r?\n/)
+    project_names = @config['projects'].map { |prj| prj['name'] }
+    result = project_names.map { |name| [name, {}] }.to_h
     tasks.each do |task|
       project_names.each do |name|
-        if task.include?(name) && task =~ /\sIssue #(\d+)\s/
-          number = $1.to_i
-          if result[name][number]
-            puts "WARN: duplicated #{name} #{number}"
-          end
-          result[name][number] = {
-            'url' => "https://github.com/#{name}/issues/#{number}",
-            'title' => task
-          }
+        next unless task.include?(name)
+        next unless task =~ /\sIssue #(\d+)\s/
+
+        number = Regexp.last_match[1].to_i
+        if result[name][number]
+          puts "WARN: duplicated #{name} #{number}"
         end
+        result[name][number] = {
+          'url' => "https://github.com/#{name}/issues/#{number}",
+          'title' => task
+        }
       end
     end
     result
@@ -190,7 +189,7 @@ class Things::IssuesDiff
   end
 
   def sample_config
-    puts <<EOT
+    puts <<END_OF_CONFIG
 # ----------------------------------------------------------------
 # things-diff config file
 # https://github.com/koseki/things-issues-diff
@@ -220,7 +219,7 @@ projects:
   - name: repos/path2
   - name: repos/path3
 
-EOT
+END_OF_CONFIG
   end
 end
 
