@@ -8,6 +8,7 @@ require 'yaml'
 class Things::IssuesDiff
   def parse_options(argv)
     opts = OptionParser.new
+    opts.version = VERSION
 
     opts.on('-h', '--help', 'Show help') do
       usage
@@ -184,7 +185,7 @@ class Things::IssuesDiff
   end
 
   def usage
-    puts 'Usage: things.rb --config FILE [help|sampleconf|fetch|diff]'
+    puts 'Usage: things-diff --config FILE [help|sampleconf|fetch|diff]'
     exit 1
   end
 
