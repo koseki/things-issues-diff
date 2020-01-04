@@ -5,44 +5,93 @@ require 'octokit'
 require 'yaml'
 
 class Things::IssuesDiff
-  def initialize(args)
-    @args = args
-    @commands = args[:commands]
-    @config_file = args[:config_file] || File.join(ENV['HOME'], '.things-diff.yml')
+  def parse_options(argv)
+    opts = OptionParser.new
 
-    unless File.exists?(@config_file)
-      puts "Error: No such file: #{@config_file}"
+    opts.on('-h', '--help', 'Show help') do
       usage
+    end
+
+    @args = {}
+    opts.on('-c FILE', '--config', 'Config file') do |v|
+      @args[:config_file] = v
+    end
+    opts.on('--ignore-filter', 'Do not filter issues/tasks') do |v|
+      @args[:ignore_filter] = v
+    end
+    opts.parse!(argv)
+
+    commands = []
+    unless argv[0].nil?
+      commands = argv.shift.split(/\s*,\s*/)
+    end
+    @commands = %w{help sampleconf fetch diff}.& commands
+  end
+
+  def load_config
+    default_config_file = File.join(ENV['HOME'], '.things-diff/config.yml')
+    @config_file = @args[:config_file] || default_config_file
+    unless File.exists?(@config_file)
+      puts "Error: Config file not found: #{@config_file}"
+
+      unless File.exists?(default_config_file)
+        puts
+        puts "Please create config.yml and edit."
+        puts "  $ mkdir ~/.things-diff/"
+        puts "  $ things-diff sampleconf > ~/.things-diff/config.yml"
+        puts "  $ vi ~/.things-diff/config.yml"
+      end
+      exit 1
     end
     @config_file = File.absolute_path(@config_file)
     @config = YAML.load_file(@config_file)
 
     if @config['data_file']
       @data_file = File.join(File.dirname(@config_file), @config['data_file'])
+      @data_file = File.absolute_path(@data_file)
     else
-      @data_file = File.join(File.dirname(@config_file), '.things-diff.data')
+      puts "Error: Please set the data_file"
+      exit 1
     end
-    @data_file = File.absolute_path(@data_file)
+  end
 
-    # https://octokit.github.io/octokit.rb/
+  # https://octokit.github.io/octokit.rb/
+  def init_octokit
     @client = Octokit::Client.new(:access_token => @config['token'])
     @client.auto_paginate = true
   end
 
-  def execute
+  def execute(argv)
+    parse_options(argv)
+    if @commands.include?('help')
+      usage
+    end
+
+    if @commands.include?('sampleconf')
+      sample_config
+      exit
+    end
+
+    load_config
+    init_octokit
+
+    if @commands.empty?
+      usage
+    end
+
     if @commands.include?('fetch')
-      fetch()
+      fetch
     end
 
     if @commands.include?('diff')
-      diff()
+      diff
     end
   end
 
   def fetch
     result = {}
     @config['projects'].each do |project|
-      puts "Loading #{project['name']}"
+      puts "Loading: #{project['name']}"
       result[project['name']] = {}
       issues = @client.list_issues(project['name'], assignee: @config['user'])
       issues.each do |issue|
@@ -65,6 +114,7 @@ class Things::IssuesDiff
     File.open(@data_file, 'w') do |out|
       out << yaml
     end
+    puts "Saved: #{@data_file}"
   end
 
   def diff
@@ -135,18 +185,25 @@ class Things::IssuesDiff
   end
 
   def usage
-    puts 'Usage: things.rb --config FILE [fetch|diff]'
-    puts
+    puts 'Usage: things.rb --config FILE [help|sampleconf|fetch|diff]'
+    exit 1
+  end
+
+  def sample_config
     puts <<EOT
 # ----------------------------------------------------------------
-# Sample ~/.things-diff.yml
+# things-diff config file
+# https://github.com/koseki/things-issues-diff
+#
+# $ mkdir ~/.things-diff
+# $ things-diff sampleconf > ~/.things-diff/config.yml
 # ----------------------------------------------------------------
 
-# Create token with repo scope.
+# Create a token with the repo scope.
 # https://github.com/settings/tokens/new
 token: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
-# Default ~/.things-diff.data
+# The relative path is based on the config file.
 data_file: data.yml
 
 user: assignee-user-name
@@ -163,30 +220,8 @@ projects:
   - name: repos/path2
   - name: repos/path3
 
-# ----------------------------------------------------------------
 EOT
-    exit 1
   end
 end
 
-
-
-opts = OptionParser.new
-args = {}
-opts.on('-c FILE', '--config', 'Config file') do |v|
-  args[:config_file] = v
-end
-opts.on('--ignore-filter', 'Do not filter issues/tasks') do |v|
-  args[:ignore_filter] = v
-end
-opts.parse!(ARGV)
-
-@commands = []
-if ARGV[0] == 'fetch'
-  commands = ['fetch']
-elsif ARGV[0] == 'diff'
-  commands = ['diff']
-end
-args[:commands] = commands
-
-Things::IssuesDiff.new(args).execute
+Things::IssuesDiff.new.execute(ARGV)
